@@ -101,6 +101,17 @@ final class AttachmentsTest
         Expect::exception(InvalidArgumentException::class)->withMessageContaining('not visible');
         $attachments->attach($file, 'order', 'order-2');
 
+        $fileVisibleInTenantB = SqliteDatabase::file('file-2', 'sha/da/39/tenant-b');
+        $database->files->save($fileVisibleInTenantB);
+        $database->db->createCommand()->insert('filestorage_attachment', [
+            'scope_id' => 'tenant-a',
+            'owner_type' => 'order',
+            'owner_id' => 'order-1',
+            'role' => 'corrupt-cross-scope-link',
+            'file_id' => $fileVisibleInTenantB->id,
+        ])->execute();
+        Assert::same($attachments->forOwner('order', 'order-1'), []);
+
         $scope->switchTo('tenant-a');
         Assert::same(count($attachments->forOwner('order', 'order-1')), 1);
         $database->close();
@@ -125,6 +136,14 @@ final class AttachmentsTest
         Expect::exception(InvalidArgumentException::class);
 
         $this->attachments->detach(SqliteDatabase::file('file-1'), $ownerType, $ownerId, $role);
+    }
+
+    #[DataProvider('invalidAttachOwnerParts')]
+    public function attachValidatesEveryOwnerPart(string $ownerType, string $ownerId, string $role, string $message): void
+    {
+        Expect::exception(InvalidArgumentException::class)->withMessageContaining($message);
+
+        $this->attachments->attach(SqliteDatabase::file('file-1'), $ownerType, $ownerId, $role);
     }
 
     public function forOwnerValidatesItsArguments(): void
@@ -153,7 +172,28 @@ final class AttachmentsTest
             'file_id' => $file->id,
         ])->execute();
 
-        Assert::same($this->attachments->forOwner('order', 'order-1'), []);
+        $this->attachments->attach($file, 'order', 'order-1', 'invoice');
+
+        Assert::same(
+            array_map(static fn(Attachment $attachment): string => $attachment->role, $this->attachments->forOwner('order', 'order-1')),
+            ['invoice'],
+        );
+    }
+
+    public function forOwnerKeepsInsertionOrderWhenSqliteReversesUnorderedQueries(): void
+    {
+        $first = SqliteDatabase::file('file-1');
+        $second = SqliteDatabase::file('file-2', 'sha/da/39/original');
+        $this->database->files->save($first);
+        $this->database->files->save($second);
+        $this->attachments->attach($first, 'order', 'order-1');
+        $this->attachments->attach($second, 'order', 'order-1');
+        $this->database->db->createCommand('PRAGMA reverse_unordered_selects = ON')->execute();
+
+        Assert::same(
+            array_map(static fn(Attachment $attachment): string => $attachment->file->id, $this->attachments->forOwner('order', 'order-1')),
+            ['file-1', 'file-2'],
+        );
     }
 
     /** @return iterable<string, array{string, string, string}> */
@@ -168,5 +208,13 @@ final class AttachmentsTest
         yield 'empty role' => ['order', 'owner-1', ''];
         yield 'long role' => ['order', 'owner-1', str_repeat('r', 65)];
         yield 'nul role' => ['order', 'owner-1', "invoice\0draft"];
+    }
+
+    /** @return iterable<string, array{string, string, string, string}> */
+    public static function invalidAttachOwnerParts(): iterable
+    {
+        yield 'empty type' => ['', 'owner-1', 'default', 'Invalid owner type'];
+        yield 'empty id' => ['order', '', 'default', 'Owner id'];
+        yield 'empty role' => ['order', 'owner-1', '', 'Role'];
     }
 }
