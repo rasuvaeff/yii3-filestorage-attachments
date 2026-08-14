@@ -1,0 +1,23 @@
+# rasuvaeff/yii3-filestorage-attachments
+
+Namespace: `Rasuvaeff\\Yii3FilestorageAttachments`
+
+`Attachments` is a database-backed polymorphic link service for
+`rasuvaeff/yii3-filestorage`.
+
+Public API:
+- `AttachmentTableName(string $value = 'filestorage_attachment')`
+- `Attachment(File $file, string $ownerType, string $ownerId, string $role)`
+- `Attachments::attach(File $file, string $ownerType, string $ownerId, string $role = 'default'): bool`
+- `Attachments::detach(File $file, string $ownerType, string $ownerId, string $role = 'default'): bool`
+- `Attachments::forOwner(string $ownerType, string $ownerId, ?string $role = null): list<Attachment>`
+- `Attachments::detachOwner(string $ownerType, string $ownerId): int`
+- `Migration\\M260814000000CreateFilestorageAttachmentTable`
+
+Links are unique by `(scope_id, owner_type, owner_id, role, file_id)` and
+`attach()` is idempotent. `scope_id = ''` means single-tenant mode; a bound
+`FileScopeProviderInterface` supplies the non-empty scope key. The file foreign
+key cascades on file deletion. Owner deletion is application-owned and calls
+`detachOwner()`.
+
+Run `yii3-filestorage-db`'s file migration before this package migration.
