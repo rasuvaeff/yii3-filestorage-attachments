@@ -118,6 +118,12 @@ jobs:
       - name: Build
         run: composer build
 
+      # `composer build` runs the Unit suite only. The Integration suite is the
+      # only thing that exercises migration discovery the way the README
+      # documents it, so leaving it out of CI is how that recipe rots.
+      - name: Integration tests
+        run: composer test:integration
+
   prefer-lowest:
     name: Prefer lowest
     needs: changes

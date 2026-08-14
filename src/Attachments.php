@@ -124,6 +124,7 @@ final readonly class Attachments
         $this->validateOwner($ownerType, $ownerId, $role);
 
         $where = [
+            'scope_id' => $this->scopeKey(),
             'owner_type' => $ownerType,
             'owner_id' => $ownerId,
         ];

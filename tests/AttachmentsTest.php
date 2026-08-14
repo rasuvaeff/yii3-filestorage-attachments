@@ -85,36 +85,56 @@ final class AttachmentsTest
         Assert::same(count($this->attachments->forOwner('order', 'order-1')), 0);
     }
 
-    public function tenantScopePreventsCrossScopeAttachReadAndDelete(): void
+    public function tenantScopePreventsCrossScopeReadAndDelete(): void
     {
         $scope = new FixedScope('tenant-a');
         $database = new SqliteDatabase($scope);
-        $attachments = new Attachments(db: $database->db, files: $database->files, scopes: $scope);
-        $file = SqliteDatabase::file('file-1');
-        $database->files->save($file);
-        $attachments->attach($file, 'order', 'order-1');
 
-        $scope->switchTo('tenant-b');
-        Assert::same(count($attachments->forOwner('order', 'order-1')), 0);
-        Assert::same($attachments->detachOwner('order', 'order-1'), 0);
-        Assert::false($attachments->detach($file, 'order', 'order-1'));
-        Expect::exception(InvalidArgumentException::class)->withMessageContaining('not visible');
-        $attachments->attach($file, 'order', 'order-2');
+        try {
+            $attachments = new Attachments(db: $database->db, files: $database->files, scopes: $scope);
+            $file = SqliteDatabase::file('file-1');
+            $database->files->save($file);
+            $attachments->attach($file, 'order', 'order-1');
 
-        $fileVisibleInTenantB = SqliteDatabase::file('file-2', 'sha/da/39/tenant-b');
-        $database->files->save($fileVisibleInTenantB);
-        $database->db->createCommand()->insert('filestorage_attachment', [
-            'scope_id' => 'tenant-a',
-            'owner_type' => 'order',
-            'owner_id' => 'order-1',
-            'role' => 'corrupt-cross-scope-link',
-            'file_id' => $fileVisibleInTenantB->id,
-        ])->execute();
-        Assert::same($attachments->forOwner('order', 'order-1'), []);
+            $scope->switchTo('tenant-b');
+            Assert::same(count($attachments->forOwner('order', 'order-1')), 0);
+            Assert::same($attachments->detachOwner('order', 'order-1'), 0);
+            Assert::false($attachments->detach($file, 'order', 'order-1'));
 
-        $scope->switchTo('tenant-a');
-        Assert::same(count($attachments->forOwner('order', 'order-1')), 1);
-        $database->close();
+            $fileVisibleInTenantB = SqliteDatabase::file('file-2', 'sha/da/39/tenant-b');
+            $database->files->save($fileVisibleInTenantB);
+            $database->db->createCommand()->insert('filestorage_attachment', [
+                'scope_id' => 'tenant-a',
+                'owner_type' => 'order',
+                'owner_id' => 'order-1',
+                'role' => 'corrupt-cross-scope-link',
+                'file_id' => $fileVisibleInTenantB->id,
+            ])->execute();
+            Assert::same($attachments->forOwner('order', 'order-1'), []);
+
+            $scope->switchTo('tenant-a');
+            Assert::same(count($attachments->forOwner('order', 'order-1')), 1);
+        } finally {
+            $database->close();
+        }
+    }
+
+    public function tenantScopePreventsCrossScopeAttach(): void
+    {
+        $scope = new FixedScope('tenant-a');
+        $database = new SqliteDatabase($scope);
+
+        try {
+            $attachments = new Attachments(db: $database->db, files: $database->files, scopes: $scope);
+            $file = SqliteDatabase::file('file-1');
+            $database->files->save($file);
+
+            $scope->switchTo('tenant-b');
+            Expect::exception(InvalidArgumentException::class)->withMessageContaining('not visible');
+            $attachments->attach($file, 'order', 'order-2');
+        } finally {
+            $database->close();
+        }
     }
 
     public function acceptsMaximumColumnLengths(): void

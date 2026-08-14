@@ -60,6 +60,11 @@ The table has a real foreign key to `filestorage_file`, so deleting a file row
 automatically removes its links. There is deliberately no generic foreign key
 to owner tables.
 
+> **SQLite prerequisite:** SQLite enforces `ON DELETE CASCADE` only when every
+> connection enables `PRAGMA foreign_keys = ON`. The package does not configure
+> connections injected into it — do this in your application's connection
+> setup. MySQL/MariaDB and PostgreSQL enforce the cascade by default.
+
 ## Table names and scope
 
 Set `rasuvaeff/yii3-filestorage-attachments.attachmentTable` and `tablePrefix`

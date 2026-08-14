@@ -4,7 +4,7 @@ Guidance for AI agents working on this package. Read before changing code.
 
 `rasuvaeff/yii3-filestorage-attachments` stores owner-to-file links for
 `rasuvaeff/yii3-filestorage` without an Active Record dependency. The public
-namespace is `Rasuvaeff\\Yii3FilestorageAttachments`; the main API is
+namespace is `Rasuvaeff\Yii3FilestorageAttachments`; the main API is
 `Attachments`, `Attachment`, `AttachmentTableName` and the migration under
 `src/Migration/`.
 
@@ -43,8 +43,8 @@ public contract and must stay runnable.
 ## Invariants and migration rules
 
 - Code uses `declare(strict_types=1)`, explicit types, named arguments and
-  `#[\\Override]` where applicable.
-- Validation patterns anchor with `\\z`, never `$`; the latter accepts a final
+  `#[\Override]` where applicable.
+- Validation patterns anchor with `\z`, never `$`; the latter accepts a final
   newline in PCRE.
 - Migrations live under `src/Migration/`, use typed table-name value objects,
   and are built through `Injector::make()`.
