@@ -2,7 +2,7 @@
 
 All notable changes to this package are documented here.
 
-## Unreleased
+## 0.2.0 — 2026-10-28
 
 - `Attachments::sync()`: replace a role's file set in one transaction —
   "exactly one invoice per order" as a single call instead of attach-new +
