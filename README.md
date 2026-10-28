@@ -56,6 +56,31 @@ exists. `forOwner()` returns `list<Attachment>` in insertion order; omit
 an owner and must be called by the application or an Active Record lifecycle
 when that owner is deleted.
 
+"Exactly one invoice per order" is `sync()` — replacing a role's file set in
+one transaction, so a crash cannot leave two invoices where one was meant:
+
+```php
+$result = $attachments->sync(
+    files: [$newInvoice],
+    ownerType: 'order',
+    ownerId: (string) $orderId,
+    role: 'invoice',
+);
+// ['added' => 1, 'removed' => 1]
+```
+
+Links whose file is not in the list are removed, missing ones added — both
+inside one database transaction. Surviving links keep their insertion order
+(the list's order is not a sort order; there is deliberately no sort column),
+and every file must be visible in the current scope before anything is
+written.
+
+Concurrency: the transaction's delete locks the role's rows until commit, so
+syncs of a role that already holds anything serialize correctly. Two
+concurrent syncs against a role that is empty on both sides may both commit
+their sets (the unique key still prevents duplicate links) — serialize such
+callers if that case matters.
+
 The table has a real foreign key to `filestorage_file`, so deleting a file row
 automatically removes its links. There is deliberately no generic foreign key
 to owner tables.

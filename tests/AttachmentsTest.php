@@ -60,6 +60,113 @@ final class AttachmentsTest
         Assert::same(array_map(static fn(Attachment $a): string => $a->role, $this->attachments->forOwner('order', 'order-1', 'invoice')), ['invoice']);
     }
 
+    public function syncReplacesARolesFileSetInOneCall(): void
+    {
+        $one = SqliteDatabase::file('file-1');
+        $two = SqliteDatabase::file('file-2', 'sha/da/39/original');
+        $three = SqliteDatabase::file('file-3', 'sha/da/39/other');
+        foreach ([$one, $two, $three] as $file) {
+            $this->database->files->save($file);
+        }
+        $this->attachments->attach($one, 'order', 'order-1', 'invoice');
+        $this->attachments->attach($two, 'order', 'order-1', 'invoice');
+        $this->attachments->attach($two, 'order', 'order-1', 'receipt'); // another role stays
+
+        $result = $this->attachments->sync([$three], 'order', 'order-1', 'invoice');
+
+        Assert::same($result, ['added' => 1, 'removed' => 2]);
+        $invoices = $this->attachments->forOwner('order', 'order-1', 'invoice');
+        Assert::same(count($invoices), 1);
+        Assert::same($invoices[0]->file->id, 'file-3');
+        // The receipt role is not this sync's business.
+        $receipts = $this->attachments->forOwner('order', 'order-1', 'receipt');
+        Assert::same(count($receipts), 1);
+    }
+
+    public function anEmptyListClearsTheRole(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+        $this->attachments->attach($file, 'order', 'order-1', 'invoice');
+
+        $result = $this->attachments->sync([], 'order', 'order-1', 'invoice');
+
+        Assert::same($result, ['added' => 0, 'removed' => 1]);
+        Assert::same($this->attachments->forOwner('order', 'order-1', 'invoice'), []);
+    }
+
+    /** Nothing is written when any file is invisible — the whole set or none. */
+    public function syncRefusesAFileOutsideTheScopeBeforeWriting(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+        $this->attachments->attach($file, 'order', 'order-1', 'invoice');
+
+        $ghost = SqliteDatabase::file('ghost', 'sha/da/39/ghost');
+
+        Expect::exception(InvalidArgumentException::class)
+            ->withMessageContaining('is not visible in the current scope');
+
+        $this->attachments->sync([$ghost], 'order', 'order-1', 'invoice');
+
+        // The existing link survived the refusal.
+        Assert::same(count($this->attachments->forOwner('order', 'order-1', 'invoice')), 1);
+    }
+
+    public function syncKeepsSurvivingLinksInInsertionOrder(): void
+    {
+        $one = SqliteDatabase::file('file-1');
+        $two = SqliteDatabase::file('file-2', 'sha/da/39/original');
+        $three = SqliteDatabase::file('file-3', 'sha/da/39/other');
+        foreach ([$one, $two, $three] as $file) {
+            $this->database->files->save($file);
+        }
+        $this->attachments->attach($one, 'order', 'order-1', 'gallery');
+        $this->attachments->attach($two, 'order', 'order-1', 'gallery');
+
+        $result = $this->attachments->sync([$three, $one, $two], 'order', 'order-1', 'gallery');
+
+        // The two survivors were already linked — only three is new, nothing removed.
+        Assert::same($result, ['added' => 1, 'removed' => 0]);
+        $ids = array_map(
+            static fn(Attachment $a): string => $a->file->id,
+            $this->attachments->forOwner('order', 'order-1', 'gallery'),
+        );
+        // one and two survive in their original insertion order; three is new.
+        Assert::same($ids, ['file-1', 'file-2', 'file-3']);
+    }
+
+    /** The owner triple is validated before anything is written. */
+    public function syncRefusesAnInvalidOwner(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+
+        Expect::exception(InvalidArgumentException::class);
+
+        $this->attachments->sync([$file], '', 'order-1');
+    }
+
+    /** Sync is scoped: another tenant's identical owner is not this sync's business. */
+    public function syncNeverTouchesAnotherScopesLinks(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+        $other = SqliteDatabase::file('file-2', 'sha/da/39/original');
+        $this->database->files->save($other);
+
+        $tenantA = new Attachments(db: $this->database->db, files: $this->database->files, scopes: new FixedScope('tenant-a'));
+        $tenantB = new Attachments(db: $this->database->db, files: $this->database->files, scopes: new FixedScope('tenant-b'));
+        $tenantA->attach($file, 'order', 'order-1', 'invoice');
+        $tenantB->attach($file, 'order', 'order-1', 'invoice');
+        $tenantB->attach($other, 'order', 'order-1', 'invoice');
+
+        $result = $tenantA->sync([$other], 'order', 'order-1', 'invoice');
+
+        Assert::same($result, ['added' => 1, 'removed' => 1]);
+        Assert::same(count($tenantB->forOwner('order', 'order-1', 'invoice')), 2);
+    }
+
     public function detachAndDetachOwnerAreScopedToTheOwner(): void
     {
         $file = SqliteDatabase::file('file-1');
