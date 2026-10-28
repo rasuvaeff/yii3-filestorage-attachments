@@ -75,6 +75,12 @@ inside one database transaction. Surviving links keep their insertion order
 and every file must be visible in the current scope before anything is
 written.
 
+Concurrency: the transaction's delete locks the role's rows until commit, so
+syncs of a role that already holds anything serialize correctly. Two
+concurrent syncs against a role that is empty on both sides may both commit
+their sets (the unique key still prevents duplicate links) — serialize such
+callers if that case matters.
+
 The table has a real foreign key to `filestorage_file`, so deleting a file row
 automatically removes its links. There is deliberately no generic foreign key
 to owner tables.

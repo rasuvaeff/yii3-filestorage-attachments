@@ -117,6 +117,12 @@ final readonly class Attachments
      * links keep their insertion order; the list's order is not a sort order
      * (there is deliberately no sort column).
      *
+     * Concurrency: the delete locks the role's rows until commit, so syncs
+     * of a role that holds anything serialize correctly. Two concurrent
+     * syncs against a role that is empty on both sides may both commit
+     * their sets (the unique key still prevents duplicate links) —
+     * serialize those callers if that case matters.
+     *
      * @param list<File> $files Every file must be visible in the current
      *        scope — checked before anything is written, like {@see attach()}.
      * @param non-empty-string $ownerType
@@ -159,25 +165,31 @@ final readonly class Attachments
             // surviving link as idempotent — the same contract attach() has.
             $added = 0;
             foreach ($files as $file) {
+                $row = [
+                    'scope_id' => $this->scopeKey(),
+                    'owner_type' => $ownerType,
+                    'owner_id' => $ownerId,
+                    'role' => $role,
+                    'file_id' => $file->id,
+                ];
+
                 try {
-                    $added += $this->db->createCommand()->insert($this->table, [
-                        'scope_id' => $this->scopeKey(),
-                        'owner_type' => $ownerType,
-                        'owner_id' => $ownerId,
-                        'role' => $role,
-                        'file_id' => $file->id,
-                    ])->execute();
+                    $inserted = 0;
+                    // The savepoint keeps this transaction usable when a
+                    // surviving link loses the unique-key race: on PostgreSQL
+                    // an uncontained integrity error would abort the whole
+                    // sync, and the idempotence check below could not even
+                    // run.
+                    $this->db->transaction(function () use ($row, &$inserted): void {
+                        $inserted = $this->db->createCommand()->insert($this->table, $row)->execute();
+                    });
+
+                    $added += $inserted;
                 } catch (IntegrityException $exception) {
                     // A concurrent writer — or this very sync's surviving
                     // link — won the unique-key race; only the exact
                     // surviving link is idempotent, everything else is real.
-                    if (!$this->linkExists([
-                        'scope_id' => $this->scopeKey(),
-                        'owner_type' => $ownerType,
-                        'owner_id' => $ownerId,
-                        'role' => $role,
-                        'file_id' => $file->id,
-                    ])) {
+                    if (!$this->linkExists($row)) {
                         throw $exception;
                     }
                 }
