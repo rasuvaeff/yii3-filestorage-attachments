@@ -12,6 +12,7 @@ Public API:
 - `Attachments::detach(File $file, string $ownerType, string $ownerId, string $role = 'default'): bool`
 - `Attachments::forOwner(string $ownerType, string $ownerId, ?string $role = null): list<Attachment>`
 - `Attachments::detachOwner(string $ownerType, string $ownerId): int`
+- `Attachments::sync(array $files, string $ownerType, string $ownerId, string $role = 'default'): array{added: int, removed: int}` — replace a role's file set in ONE transaction (delete non-kept, insert missing; unique-key catch makes duplicates idempotent). Surviving links keep insertion order; every file must be scope-visible before anything is written
 - `Migration\M260814000000CreateFilestorageAttachmentTable`
 
 Links are unique by `(scope_id, owner_type, owner_id, role, file_id)` and
