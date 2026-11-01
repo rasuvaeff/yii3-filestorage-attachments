@@ -16,6 +16,7 @@ use Testo\Expect;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
+use Yiisoft\Db\Exception\IntegrityException;
 
 #[Test]
 #[Covers(Attachments::class)]
@@ -81,6 +82,58 @@ final class AttachmentsTest
         // The receipt role is not this sync's business.
         $receipts = $this->attachments->forOwner('order', 'order-1', 'receipt');
         Assert::same(count($receipts), 1);
+    }
+
+    public function syncCountsEveryAddedLink(): void
+    {
+        $one = SqliteDatabase::file('file-1');
+        $two = SqliteDatabase::file('file-2', 'sha/da/39/original');
+        foreach ([$one, $two] as $file) {
+            $this->database->files->save($file);
+        }
+
+        $result = $this->attachments->sync([$one, $two], 'order', 'order-1', 'invoice');
+
+        Assert::same($result, ['added' => 2, 'removed' => 0]);
+    }
+
+    public function refusesARepositoryOnAnotherConnection(): void
+    {
+        $other = new SqliteDatabase();
+
+        try {
+            Expect::exception(InvalidArgumentException::class);
+            new Attachments(db: $other->db, files: $this->database->files);
+        } finally {
+            $other->close();
+        }
+    }
+
+    public function attachRethrowsAnIntegrityErrorThatIsNotAnExistingLink(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+        $this->rejectEveryInsert();
+
+        Expect::exception(IntegrityException::class);
+        $this->attachments->attach($file, 'order', 'order-1', 'invoice');
+    }
+
+    public function syncRethrowsAnIntegrityErrorThatIsNotAnExistingLink(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+        $this->rejectEveryInsert();
+
+        Expect::exception(IntegrityException::class);
+        $this->attachments->sync([$file], 'order', 'order-1', 'invoice');
+    }
+
+    private function rejectEveryInsert(): void
+    {
+        $this->database->db->getActivePdo()->exec(
+            "CREATE TRIGGER reject_insert BEFORE INSERT ON filestorage_attachment BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: forced'); END;",
+        );
     }
 
     public function anEmptyListClearsTheRole(): void
