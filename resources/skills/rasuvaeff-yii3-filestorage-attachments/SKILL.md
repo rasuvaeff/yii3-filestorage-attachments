@@ -1,3 +1,15 @@
+---
+name: rasuvaeff-yii3-filestorage-attachments
+description: >-
+  Tenant-scoped polymorphic file attachments for Yii3 with
+  rasuvaeff/yii3-filestorage-attachments — the Attachments service
+  (attach/detach/sync/forOwner/detachOwner), the Attachment record,
+  AttachmentTableName and the attachment-table migration. Use when writing,
+  reviewing or debugging code that links files to owners, reads or syncs
+  attachments, or cleans them up on owner deletion in a project that has
+  this package installed.
+---
+
 # yii3-filestorage-attachments
 
 Use this package for polymorphic file ownership links in Yii3 applications.
