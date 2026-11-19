@@ -4,6 +4,7 @@ All notable changes to this package are documented here.
 
 ## Unreleased
 
+- The agent skill now has front matter (`name`, `description`), so skill loaders can discover it (#12).
 - Mutation testing now counts uncovered code (`--with-uncovered`, template mutator settings): overall MSI 95% against `minMsi` 94. Added tests for the migration schema (columns, unique and lookup indexes, `down()`), the connection-mismatch guard, rethrown integrity errors in `attach()` and `sync()`, and the `sync()` added count. No src changes.
 
 ## 0.2.0 — 2026-10-28
