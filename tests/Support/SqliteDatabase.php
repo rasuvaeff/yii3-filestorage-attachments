@@ -7,6 +7,7 @@ namespace Rasuvaeff\Yii3FilestorageAttachments\Tests\Support;
 use DateTimeImmutable;
 use Rasuvaeff\Yii3Filestorage\File;
 use Rasuvaeff\Yii3FilestorageAttachments\Migration\M260814000000CreateFilestorageAttachmentTable;
+use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261127000000AddFilestorageAttachmentFileForeignKey;
 use Rasuvaeff\Yii3FilestorageDb\DbRepository;
 use Rasuvaeff\Yii3FilestorageDb\FileTableName;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000000CreateFilestorageFileTable;
@@ -38,6 +39,7 @@ final class SqliteDatabase
         (new M260807000000CreateFilestorageFileTable())->up($builder);
         (new M260807000001CreateFilestorageBlobTables())->up($builder);
         (new M260814000000CreateFilestorageAttachmentTable())->up($builder);
+        (new M261127000000AddFilestorageAttachmentFileForeignKey())->up($builder);
 
         $this->files = new DbRepository(
             db: $this->db,

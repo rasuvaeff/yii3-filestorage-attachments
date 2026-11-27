@@ -88,7 +88,15 @@ to owner tables.
 > **SQLite prerequisite:** SQLite enforces `ON DELETE CASCADE` only when every
 > connection enables `PRAGMA foreign_keys = ON`. The package does not configure
 > connections injected into it — do this in your application's connection
-> setup. MySQL/MariaDB and PostgreSQL enforce the cascade by default.
+> setup. PostgreSQL enforces the cascade by default.
+
+> **MySQL/MariaDB:** they ignore the column-level `REFERENCES` of the table
+> migration, so the constraint comes from the follow-up migration
+> `M261127000000AddFilestorageAttachmentFileForeignKey`. Before adding it, that
+> migration **deletes links whose file no longer exists** — on an installation
+> that ran the table migration earlier, every file removed since left its links
+> behind. The migration output prints how many rows it deleted; back up the
+> table first if you need them. On SQLite and PostgreSQL it does nothing.
 
 ## Table names and scope
 
@@ -109,4 +117,12 @@ make rector
 ```
 
 The integration suite applies the real `yii3-filestorage-db` and attachments
-migrations on SQLite and exercises the documented migration path.
+migrations on SQLite and exercises the documented migration path. The same
+suite runs against MySQL or PostgreSQL when `FILESTORAGE_TEST_DB` names one (CI
+does both); the image needs `pdo_mysql`/`pdo_pgsql`, which `composer:2` lacks:
+
+```bash
+docker run --rm --network host -v "$PWD":/app -w /app \
+  -e FILESTORAGE_TEST_DB=mysql -e FILESTORAGE_TEST_MYSQL_PORT=3306 \
+  <php-image-with-pdo_mysql-and-pdo_pgsql> vendor/bin/testo --suite=Integration
+```
