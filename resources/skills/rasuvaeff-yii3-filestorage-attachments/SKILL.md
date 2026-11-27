@@ -25,7 +25,11 @@ Use this package for polymorphic file ownership links in Yii3 applications.
 
 Bind the application's `FileScopeProviderInterface` once when tenants are used;
 the DB repository and attachment service must share that provider and database
-connection. Run the `yii3-filestorage-db` file migration before
+connection. A bound provider returning null is refused with
+`MissingScopeException` — never map it to the single-tenant empty key. On
+MySQL/MariaDB keep `M261128000000MakeFilestorageAttachmentKeysCaseSensitive`
+registered: without it the default collation makes owners `aB` and `Ab` one
+owner. Run the `yii3-filestorage-db` file migration before
 `M260814000000CreateFilestorageAttachmentTable`. Keep
 `M261127000000AddFilestorageAttachmentFileForeignKey` registered too: MySQL and
 MariaDB ignore the table migration's inline `REFERENCES`, and this migration

@@ -2,6 +2,15 @@
 
 All notable changes to this package are documented here.
 
+## Unreleased
+
+- **Changed:** requires `rasuvaeff/yii3-filestorage-db` `^0.4`.
+- **Changed (security):** a bound `FileScopeProviderInterface` returning `null` makes every `Attachments` method throw `Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException`. Before, it fell back to the single-tenant scope key `''`, and `attach()`'s file lookup ran without a tenant predicate, so a file of another tenant could be linked.
+- **Fixed:** on MySQL/MariaDB the default collation compared `scope_id`, `owner_type`, `owner_id` and `role` case- and accent-insensitively: owner `Ab` saw and `detachOwner()` removed the links of owner `aB`, and the unique key refused `Ab`'s first link, which `attach()` reported as "already linked". New migration `M261128000000MakeFilestorageAttachmentKeysCaseSensitive` switches the four columns to `utf8mb4_bin` (no-op on SQLite/PostgreSQL). Run `migrate:up` after upgrading; see `UPGRADE.md`.
+- `forOwner()` reads the linked files with one scoped `DbRepository::findMany()` query instead of one `find()` per link.
+- Docs: `M261127000000AddFilestorageAttachmentFileForeignKey` (0.5.0) deletes dangling links before adding the constraint, prints the count (`Deleted N rows`) and cannot be atomic on MySQL — a failed `ALTER` keeps the deletion. Now stated in README EN/RU, llms.txt and `UPGRADE.md`; a test pins the printed count.
+- `extra.branch-alias.dev-master` is `0.6.x-dev`.
+
 ## 0.5.0 — 2026-11-27
 
 - **Changed:** requires `rasuvaeff/yii3-filestorage` `^0.9` and `rasuvaeff/yii3-filestorage-db` `^0.3`, so the package installs on the family's 0.9 line (core's 0.9.0 notes list the interface changes for store, repository and key-generator implementers; the attachment API is unchanged). This release no longer installs with core 0.8; stay on 0.4.0 for that.

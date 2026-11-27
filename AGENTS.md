@@ -65,6 +65,13 @@ public contract and must stay runnable.
   and are built through `Injector::make()`.
 - `scope_id` is non-null. The empty string represents single-tenant mode;
   SQL `NULL` would let unique indexes admit duplicate unscoped links.
+- The empty string is for an **unbound** provider only. A bound provider
+  returning null throws `MissingScopeException` (from `-db`); never map it to
+  `''`.
+- MySQL/MariaDB compare the link key case-insensitively unless
+  `M261128000000MakeFilestorageAttachmentKeysCaseSensitive` ran; any new key
+  column needs `utf8mb4_bin` there too (`file_id` excepted — the FK needs the
+  file table's collation).
 - The file FK is inline because SQLite cannot add a foreign key with a later
   `ALTER TABLE`. MySQL/MariaDB parse that inline `REFERENCES` and **ignore**
   it, so `M261127000000AddFilestorageAttachmentFileForeignKey` adds the

@@ -14,11 +14,16 @@ Public API:
 - `Attachments::detachOwner(string $ownerType, string $ownerId): int`
 - `Attachments::sync(array $files, string $ownerType, string $ownerId, string $role = 'default'): array{added: int, removed: int}` — replace a role's file set in ONE transaction (delete non-kept, insert missing; unique-key catch makes duplicates idempotent). Surviving links keep insertion order; every file must be scope-visible before anything is written
 - `Migration\M260814000000CreateFilestorageAttachmentTable`
-- `Migration\M261127000000AddFilestorageAttachmentFileForeignKey` — MySQL/MariaDB only in effect (they ignore the inline `REFERENCES`): deletes links whose file no longer exists, then adds the `ON DELETE CASCADE` foreign key. No-op on SQLite/PostgreSQL
+- `Migration\M261127000000AddFilestorageAttachmentFileForeignKey` — MySQL/MariaDB only in effect (they ignore the inline `REFERENCES`): deletes links whose file no longer exists (output: `Deleted N rows`; not atomic with the `ALTER`), then adds the `ON DELETE CASCADE` foreign key. No-op on SQLite/PostgreSQL
+- `Migration\M261128000000MakeFilestorageAttachmentKeysCaseSensitive` (0.6.0) — MySQL/MariaDB only: `scope_id`, `owner_type`, `owner_id`, `role` in `utf8mb4_bin` (default collations made `aB`/`Ab` one owner). No-op on SQLite/PostgreSQL
 
 Links are unique by `(scope_id, owner_type, owner_id, role, file_id)` and
-`attach()` is idempotent. `scope_id = ''` means single-tenant mode; a bound
-`FileScopeProviderInterface` supplies the non-empty scope key. The file foreign
+`attach()` is idempotent. `scope_id = ''` means single-tenant mode (no provider
+bound); a bound `FileScopeProviderInterface` supplies the non-empty scope key,
+and a bound provider returning null makes every method throw
+`Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException` — never the
+empty key. `forOwner()` hydrates files with one scoped
+`DbRepository::findMany()` call. The file foreign
 key cascades on file deletion (SQLite requires `PRAGMA foreign_keys = ON`
 per connection; on MySQL/MariaDB the constraint comes from
 `M261127000000AddFilestorageAttachmentFileForeignKey`). Owner deletion is application-owned and calls
