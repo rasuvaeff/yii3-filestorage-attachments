@@ -2,7 +2,7 @@
 
 All notable changes to this package are documented here.
 
-## Unreleased
+## 0.4.0 — 2026-11-27
 
 - **Fixed:** on MySQL/MariaDB removing a file left its attachment links behind. They parse the table migration's column-level `REFERENCES ... ON DELETE CASCADE` and ignore it, so no foreign key existed. The new migration `M261127000000AddFilestorageAttachmentFileForeignKey` adds it wherever the table has none: it first **deletes links whose file no longer exists** (the migration output prints the count), then adds the cascading constraint. On SQLite and PostgreSQL, which already have the constraint, it does nothing. #17
 - Requires `rasuvaeff/yii3-filestorage-db` `^0.2.1`, which fixes deduplicated removes on MySQL and PostgreSQL.
