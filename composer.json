@@ -22,7 +22,7 @@
     },
     "require": {
         "php": "8.3 - 8.5",
-        "rasuvaeff/yii3-filestorage": "^0.9",
+        "rasuvaeff/yii3-filestorage": "^0.10",
         "rasuvaeff/yii3-filestorage-db": "^0.4",
         "yiisoft/db": "^2.0",
         "yiisoft/db-migration": "^2.1"

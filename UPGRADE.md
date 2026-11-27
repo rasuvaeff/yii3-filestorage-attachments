@@ -2,7 +2,7 @@
 
 ## 0.5.x → 0.6.0
 
-1. Requires `rasuvaeff/yii3-filestorage-db` `^0.4` — see its CHANGELOG (it adds its own migration and the same null-scope refusal).
+1. Requires `rasuvaeff/yii3-filestorage` `^0.10` and `rasuvaeff/yii3-filestorage-db` `^0.4` — see their CHANGELOGs and `-db`'s `UPGRADE.md` (it adds its own migration and the same null-scope refusal).
 2. Run `./yii migrate:up`. On MySQL/MariaDB the new
    `M261128000000MakeFilestorageAttachmentKeysCaseSensitive` switches `scope_id`, `owner_type`, `owner_id` and
    `role` to `utf8mb4_bin`. Making the comparison stricter cannot fail on existing rows. After it, owner ids,

@@ -4,7 +4,7 @@ All notable changes to this package are documented here.
 
 ## Unreleased
 
-- **Changed:** requires `rasuvaeff/yii3-filestorage-db` `^0.4`.
+- **Changed:** requires `rasuvaeff/yii3-filestorage` `^0.10` and `rasuvaeff/yii3-filestorage-db` `^0.4`. No API change here; built and tested against both (Unit, Integration on SQLite, MySQL 8.4, PostgreSQL 17).
 - **Changed (security):** a bound `FileScopeProviderInterface` returning `null` makes every `Attachments` method throw `Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException`. Before, it fell back to the single-tenant scope key `''`, and `attach()`'s file lookup ran without a tenant predicate, so a file of another tenant could be linked.
 - **Fixed:** on MySQL/MariaDB the default collation compared `scope_id`, `owner_type`, `owner_id` and `role` case- and accent-insensitively: owner `Ab` saw and `detachOwner()` removed the links of owner `aB`, and the unique key refused `Ab`'s first link, which `attach()` reported as "already linked". New migration `M261128000000MakeFilestorageAttachmentKeysCaseSensitive` switches the four columns to `utf8mb4_bin` (no-op on SQLite/PostgreSQL). Run `migrate:up` after upgrading; see `UPGRADE.md`.
 - `forOwner()` reads the linked files with one scoped `DbRepository::findMany()` query instead of one `find()` per link.
