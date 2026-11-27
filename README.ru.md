@@ -80,7 +80,16 @@ $result = $attachments->sync(
 > **Пререквизит SQLite:** SQLite применяет `ON DELETE CASCADE` только когда
 > каждое соединение включает `PRAGMA foreign_keys = ON`. Пакет не настраивает
 > переданные ему соединения — включите pragma в конфигурации соединения
-> приложения. В MySQL/MariaDB и PostgreSQL каскад работает по умолчанию.
+> приложения. В PostgreSQL каскад работает по умолчанию.
+
+> **MySQL/MariaDB:** они игнорируют `REFERENCES` на уровне колонки в миграции
+> таблицы, поэтому ограничение создаёт следующая миграция
+> `M261127000000AddFilestorageAttachmentFileForeignKey`. Перед этим она
+> **удаляет связи, чей файл уже не существует**: на установке, где миграция
+> таблицы применена раньше, каждый удалённый с тех пор файл оставил свои связи.
+> Вывод миграции показывает число удалённых строк; если они нужны, сначала
+> сделайте резервную копию таблицы. На SQLite и PostgreSQL миграция ничего не
+> делает.
 
 ## Имена таблиц и scope
 
@@ -101,4 +110,12 @@ make rector
 ```
 
 Интеграционный suite применяет настоящие миграции `yii3-filestorage-db` и
-attachments на SQLite и проверяет документированный путь миграций.
+attachments на SQLite и проверяет документированный путь миграций. Тот же suite
+гоняется на MySQL или PostgreSQL, если `FILESTORAGE_TEST_DB` называет сервер (CI
+гоняет оба); образу нужны `pdo_mysql`/`pdo_pgsql`, которых нет в `composer:2`:
+
+```bash
+docker run --rm --network host -v "$PWD":/app -w /app \
+  -e FILESTORAGE_TEST_DB=mysql -e FILESTORAGE_TEST_MYSQL_PORT=3306 \
+  <php-image-with-pdo_mysql-and-pdo_pgsql> vendor/bin/testo --suite=Integration
+```

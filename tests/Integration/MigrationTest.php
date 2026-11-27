@@ -6,6 +6,7 @@ namespace Rasuvaeff\Yii3FilestorageAttachments\Tests\Integration;
 
 use Rasuvaeff\Yii3FilestorageAttachments\AttachmentTableName;
 use Rasuvaeff\Yii3FilestorageAttachments\Migration\M260814000000CreateFilestorageAttachmentTable;
+use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261127000000AddFilestorageAttachmentFileForeignKey;
 use Rasuvaeff\Yii3FilestorageDb\FileTableName;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000000CreateFilestorageFileTable;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000001CreateFilestorageBlobTables;
@@ -44,6 +45,7 @@ final class MigrationTest
         // The migration is created by the injector, not by a container class
         // definition keyed by the migration FQCN.
         $migration = (new Injector($container))->make(M260814000000CreateFilestorageAttachmentTable::class);
+        $foreignKey = (new Injector($container))->make(M261127000000AddFilestorageAttachmentFileForeignKey::class);
 
         // The custom file table must exist for the inline FK, so apply the
         // dependency migrations with matching typed names in a fresh schema.
@@ -57,6 +59,7 @@ final class MigrationTest
         (new M260807000000CreateFilestorageFileTable(new FileTableName('app_files')))->up($builder);
         (new M260807000001CreateFilestorageBlobTables())->up($builder);
         $migration->up($builder);
+        $foreignKey->up($builder);
 
         $schema = $db->getTableSchema('app_attachments', refresh: true);
         Assert::notNull($schema);
@@ -65,6 +68,7 @@ final class MigrationTest
         }
         Assert::same($schema?->getPrimaryKey(), ['id']);
 
+        $foreignKey->down($builder);
         $migration->down($builder);
         Assert::null($db->getTableSchema('app_attachments', refresh: true));
         $db->close();
