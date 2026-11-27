@@ -8,6 +8,7 @@ All notable changes to this package are documented here.
 - Run `migrate:up` after upgrading: `yii3-filestorage-db` 0.3.0 adds `M261127000000AddFilestorageFileStorePathIndex`. The test schema, `MigrationTest`, `CrossDatabaseMigrationTest` and `examples/attachments.php` now apply it with the other `-db` migrations.
 - `extra.branch-alias.dev-master` is `0.5.x-dev` (was a stale `0.1.x-dev`).
 - `.github/CODEOWNERS` added from the template.
+- CI: the backward-compatibility step tolerates a report across a pre-1.0 minor declared in `CHANGELOG.md`, as the template does.
 
 ## 0.4.0 — 2026-11-27
 
