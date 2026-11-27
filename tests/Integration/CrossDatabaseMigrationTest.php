@@ -23,6 +23,7 @@ use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261127000000AddFilestorageAt
 use Rasuvaeff\Yii3FilestorageDb\DbRepository;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000000CreateFilestorageFileTable;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000001CreateFilestorageBlobTables;
+use Rasuvaeff\Yii3FilestorageDb\Migration\M261127000000AddFilestorageFileStorePathIndex;
 use Testo\Assert;
 use Testo\Codecov\CoversNothing;
 use Testo\Test;
@@ -83,10 +84,12 @@ final class CrossDatabaseMigrationTest
             $builder = new MigrationBuilder(db: $db, informer: new NullMigrationInformer());
             $files = new M260807000000CreateFilestorageFileTable();
             $blobs = new M260807000001CreateFilestorageBlobTables();
+            $pathIndex = new M261127000000AddFilestorageFileStorePathIndex();
             $table = new M260814000000CreateFilestorageAttachmentTable();
             $foreignKey = new M261127000000AddFilestorageAttachmentFileForeignKey();
             $files->up($builder);
             $blobs->up($builder);
+            $pathIndex->up($builder);
             $table->up($builder);
 
             $repository = new DbRepository($db);
@@ -119,6 +122,7 @@ final class CrossDatabaseMigrationTest
 
             $foreignKey->down($builder);
             $table->down($builder);
+            $pathIndex->down($builder);
             $blobs->down($builder);
             $files->down($builder);
 
