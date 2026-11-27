@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Rasuvaeff\Yii3Filestorage\File;
 use Rasuvaeff\Yii3Filestorage\Repository\FileScopeProviderInterface;
 use Rasuvaeff\Yii3FilestorageDb\DbRepository;
+use Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException;
 use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Exception\IntegrityException;
 use Yiisoft\Db\Query\Query;
@@ -230,7 +231,8 @@ final readonly class Attachments
             ->orderBy(['id' => SORT_ASC])
             ->all();
 
-        $attachments = [];
+        /** @var list<array{non-empty-string, non-empty-string}> $links file id and role, in insertion order */
+        $links = [];
         foreach ($rows as $row) {
             $fileId = $row['file_id'] ?? null;
             $rowRole = $row['role'] ?? null;
@@ -238,7 +240,21 @@ final readonly class Attachments
                 continue;
             }
 
-            $file = $this->files->find($fileId);
+            $links[] = [$fileId, $rowRole];
+        }
+
+        // One scoped statement for the whole page of links rather than one
+        // per link. A file missing from the answer was deleted concurrently
+        // (its link cascades) or is outside the scope; either way it is
+        // skipped, as before.
+        $files = [];
+        foreach ($this->files->findMany(array_values(array_unique(array_column($links, 0)))) as $file) {
+            $files[$file->id] = $file;
+        }
+
+        $attachments = [];
+        foreach ($links as [$fileId, $rowRole]) {
+            $file = $files[$fileId] ?? null;
             if ($file instanceof File) {
                 $attachments[] = new Attachment(
                     file: $file,
@@ -272,14 +288,25 @@ final readonly class Attachments
         ])->execute();
     }
 
+    /**
+     * `''` when no provider is bound — the single-tenant installation. A
+     * bound provider returning null is a tenant that did not resolve, and is
+     * refused rather than read as "no tenant": `''` would then be a pool every
+     * unresolved request shares, exactly as `DbRepository` refuses it.
+     *
+     * @throws MissingScopeException
+     */
     private function scopeKey(): string
     {
-        $scope = $this->scopes?->currentScopeId();
-        if ($scope === null) {
+        if (!$this->scopes instanceof FileScopeProviderInterface) {
             return '';
         }
 
-        return $scope;
+        return $this->scopes->currentScopeId() ?? throw new MissingScopeException(sprintf(
+            '%s is bound but returned no scope, so attachments will not read or write links without a tenant. '
+            . 'Establish the tenant first',
+            FileScopeProviderInterface::class,
+        ));
     }
 
     /** @param array<string, string> $row */

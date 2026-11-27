@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3FilestorageAttachments\Tests;
 
 use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261127000000AddFilestorageAttachmentFileForeignKey;
+use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\RecordingInformer;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\SqliteDatabase;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -67,8 +68,12 @@ final class M261127000000AddFilestorageAttachmentFileForeignKeyTest
         $this->insertLink('live');
         $this->insertLink('missing');
 
+        $informer = new RecordingInformer();
+
         try {
-            (new M261127000000AddFilestorageAttachmentFileForeignKey())->up($this->builder);
+            (new M261127000000AddFilestorageAttachmentFileForeignKey())->up(
+                new MigrationBuilder(db: $this->database->db, informer: $informer),
+            );
             Assert::fail('SQLite added a foreign key to an existing table');
         } catch (NotSupportedException $e) {
             Assert::string($e->getMessage())->contains('addForeignKey');
@@ -76,6 +81,8 @@ final class M261127000000AddFilestorageAttachmentFileForeignKeyTest
 
         Assert::same($this->links('live'), 1);
         Assert::same($this->links('missing'), 0);
+        // the operator sees how many links went: `migrate:up` prints it
+        Assert::string(implode(' | ', $informer->ended))->contains('Deleted 1 row');
     }
 
     public function downIgnoresATableWithoutTheConstraint(): void

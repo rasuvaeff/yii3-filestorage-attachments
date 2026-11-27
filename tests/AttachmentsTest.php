@@ -9,6 +9,7 @@ use Rasuvaeff\Yii3FilestorageAttachments\Attachment;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachments;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\FixedScope;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\SqliteDatabase;
+use Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -274,6 +275,53 @@ final class AttachmentsTest
 
             $scope->switchTo('tenant-a');
             Assert::same(count($attachments->forOwner('order', 'order-1')), 1);
+        } finally {
+            $database->close();
+        }
+    }
+
+    /**
+     * The review probe (`nullscope.php`) for this package: a bound provider
+     * returning null became scope `''`, and with the repository dropping its
+     * predicate a caller could link another tenant's file. Every method now
+     * refuses before touching a row.
+     */
+    public function aBoundProviderReturningNullIsRefusedByEveryMethod(): void
+    {
+        $scope = new FixedScope('tenant-a');
+        $database = new SqliteDatabase($scope);
+
+        try {
+            $attachments = new Attachments(db: $database->db, files: $database->files, scopes: $scope);
+            $file = SqliteDatabase::file('file-1');
+            $database->files->save($file);
+            $attachments->attach($file, 'order', 'order-1');
+
+            $scope->switchTo(null);
+            $calls = [
+                'attach' => static fn(): mixed => $attachments->attach($file, 'order', 'order-2'),
+                'detach' => static fn(): mixed => $attachments->detach($file, 'order', 'order-1'),
+                'sync' => static fn(): mixed => $attachments->sync([], 'order', 'order-1'),
+                'forOwner' => static fn(): mixed => $attachments->forOwner('order', 'order-1'),
+                'detachOwner' => static fn(): mixed => $attachments->detachOwner('order', 'order-1'),
+            ];
+            foreach ($calls as $name => $call) {
+                $refused = false;
+
+                try {
+                    $call();
+                } catch (MissingScopeException) {
+                    $refused = true;
+                }
+
+                Assert::true($refused, "{$name} must refuse a null scope");
+            }
+
+            Assert::same(
+                (new \Yiisoft\Db\Query\Query($database->db))->from('filestorage_attachment')->count(),
+                1,
+                'nothing may have been written or deleted',
+            );
         } finally {
             $database->close();
         }

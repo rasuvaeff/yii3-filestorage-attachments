@@ -17,9 +17,11 @@ use Rasuvaeff\Yii3Filestorage\Storage;
 use Rasuvaeff\Yii3Filestorage\Store\StoreRegistry;
 use Rasuvaeff\Yii3Filestorage\Test\InMemoryStore;
 use Rasuvaeff\Yii3Filestorage\Upload;
+use Rasuvaeff\Yii3FilestorageAttachments\Attachment;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachments;
 use Rasuvaeff\Yii3FilestorageAttachments\Migration\M260814000000CreateFilestorageAttachmentTable;
 use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261127000000AddFilestorageAttachmentFileForeignKey;
+use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261128000000MakeFilestorageAttachmentKeysCaseSensitive;
 use Rasuvaeff\Yii3FilestorageDb\DbRepository;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000000CreateFilestorageFileTable;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000001CreateFilestorageBlobTables;
@@ -87,6 +89,7 @@ final class CrossDatabaseMigrationTest
             $pathIndex = new M261127000000AddFilestorageFileStorePathIndex();
             $table = new M260814000000CreateFilestorageAttachmentTable();
             $foreignKey = new M261127000000AddFilestorageAttachmentFileForeignKey();
+            $keys = new M261128000000MakeFilestorageAttachmentKeysCaseSensitive();
             $files->up($builder);
             $blobs->up($builder);
             $pathIndex->up($builder);
@@ -120,6 +123,10 @@ final class CrossDatabaseMigrationTest
             Assert::same($this->fileForeignKeys($db), 1);
             Assert::same($this->links($db, $kept->id), 1);
 
+            $keys->up($builder);
+            $this->ownersDifferingOnlyInCaseAreApart($attachments, $storage);
+            $keys->down($builder);
+
             $foreignKey->down($builder);
             $table->down($builder);
             $pathIndex->down($builder);
@@ -133,6 +140,32 @@ final class CrossDatabaseMigrationTest
             $this->dropTables($db);
             $db->close();
         }
+    }
+
+    /**
+     * MySQL's default collation compares `aB` and `Ab` (and `Post` and
+     * `post`) as equal: one owner saw, and `detachOwner()` removed, the other's
+     * links, and the unique key refused the second owner's first link.
+     */
+    private function ownersDifferingOnlyInCaseAreApart(Attachments $attachments, Storage $storage): void
+    {
+        $first = $this->add($storage);
+        $second = $this->add($storage);
+
+        Assert::true($attachments->attach($first, 'post', 'aB'));
+        Assert::true($attachments->attach($second, 'post', 'Ab'), 'a case variant is another owner');
+        Assert::true($attachments->attach($first, 'Post', 'aB'), 'a case variant is another owner type');
+        Assert::true($attachments->attach($first, 'post', 'aB', 'Cover'));
+        Assert::true($attachments->attach($first, 'post', 'aB', 'cover'), 'a case variant is another role');
+
+        Assert::same(
+            array_map(static fn(Attachment $a): string => $a->file->id, $attachments->forOwner('post', 'Ab')),
+            [$second->id],
+        );
+        Assert::same($attachments->detachOwner('post', 'Ab'), 1);
+        Assert::same(\count($attachments->forOwner('post', 'aB')), 3);
+        Assert::same($attachments->detachOwner('Post', 'aB'), 1);
+        Assert::same($attachments->detachOwner('post', 'aB'), 3);
     }
 
     /**
