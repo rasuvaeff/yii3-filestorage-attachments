@@ -10,6 +10,7 @@ use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261127000000AddFilestorageAt
 use Rasuvaeff\Yii3FilestorageDb\FileTableName;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000000CreateFilestorageFileTable;
 use Rasuvaeff\Yii3FilestorageDb\Migration\M260807000001CreateFilestorageBlobTables;
+use Rasuvaeff\Yii3FilestorageDb\Migration\M261127000000AddFilestorageFileStorePathIndex;
 use Testo\Assert;
 use Testo\Codecov\CoversNothing;
 use Testo\Test;
@@ -37,6 +38,7 @@ final class MigrationTest
         $builder = new MigrationBuilder(db: $db, informer: new NullMigrationInformer());
         (new M260807000000CreateFilestorageFileTable())->up($builder);
         (new M260807000001CreateFilestorageBlobTables())->up($builder);
+        (new M261127000000AddFilestorageFileStorePathIndex())->up($builder);
 
         $container = new Container(ContainerConfig::create()->withDefinitions([
             AttachmentTableName::class => new AttachmentTableName('app_attachments'),
@@ -58,6 +60,7 @@ final class MigrationTest
         $builder = new MigrationBuilder(db: $db, informer: new NullMigrationInformer());
         (new M260807000000CreateFilestorageFileTable(new FileTableName('app_files')))->up($builder);
         (new M260807000001CreateFilestorageBlobTables())->up($builder);
+        (new M261127000000AddFilestorageFileStorePathIndex(new FileTableName('app_files')))->up($builder);
         $migration->up($builder);
         $foreignKey->up($builder);
 

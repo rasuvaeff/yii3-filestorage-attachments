@@ -2,6 +2,14 @@
 
 All notable changes to this package are documented here.
 
+## 0.5.0 — 2026-11-27
+
+- **Changed:** requires `rasuvaeff/yii3-filestorage` `^0.9` and `rasuvaeff/yii3-filestorage-db` `^0.3`, so the package installs on the family's 0.9 line (core's 0.9.0 notes list the interface changes for store, repository and key-generator implementers; the attachment API is unchanged). This release no longer installs with core 0.8; stay on 0.4.0 for that.
+- Run `migrate:up` after upgrading: `yii3-filestorage-db` 0.3.0 adds `M261127000000AddFilestorageFileStorePathIndex`. The test schema, `MigrationTest`, `CrossDatabaseMigrationTest` and `examples/attachments.php` now apply it with the other `-db` migrations.
+- `extra.branch-alias.dev-master` is `0.5.x-dev` (was a stale `0.1.x-dev`).
+- `.github/CODEOWNERS` added from the template.
+- CI: the backward-compatibility step tolerates a report across a pre-1.0 minor declared in `CHANGELOG.md`, as the template does.
+
 ## 0.4.0 — 2026-11-27
 
 - **Fixed:** on MySQL/MariaDB removing a file left its attachment links behind. They parse the table migration's column-level `REFERENCES ... ON DELETE CASCADE` and ignore it, so no foreign key existed. The new migration `M261127000000AddFilestorageAttachmentFileForeignKey` adds it wherever the table has none: it first **deletes links whose file no longer exists** (the migration output prints the count), then adds the cascading constraint. On SQLite and PostgreSQL, which already have the constraint, it does nothing. #17

@@ -10,8 +10,9 @@ polymorphic attachment case without requiring Active Record.
 composer require rasuvaeff/yii3-filestorage-attachments
 ```
 
-The package requires `rasuvaeff/yii3-filestorage-db`. Run its file-table
-migration first, then register this package's migration namespace:
+The package requires `rasuvaeff/yii3-filestorage` `^0.9` and
+`rasuvaeff/yii3-filestorage-db` `^0.3`. Run the `-db` migrations first, then
+register this package's migration namespace:
 
 ```php
 MigrationService::class => [

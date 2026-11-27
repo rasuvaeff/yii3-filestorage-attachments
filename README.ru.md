@@ -10,8 +10,9 @@ Yii3 Filestorage с произвольными владельцами. Он по
 composer require rasuvaeff/yii3-filestorage-attachments
 ```
 
-Пакет требует `rasuvaeff/yii3-filestorage-db`. Сначала примените миграцию
-таблицы файлов, затем зарегистрируйте namespace миграций этого пакета:
+Пакет требует `rasuvaeff/yii3-filestorage` `^0.9` и
+`rasuvaeff/yii3-filestorage-db` `^0.3`. Сначала примените миграции `-db`,
+затем зарегистрируйте namespace миграций этого пакета:
 
 ```php
 MigrationService::class => [
