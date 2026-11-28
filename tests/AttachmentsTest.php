@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3FilestorageAttachments\Tests;
 
 use InvalidArgumentException;
+use Rasuvaeff\Yii3Filestorage\Repository\FileScopeProviderInterface;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachment;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachments;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\FixedScope;
+use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\QueryLog;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\SqliteDatabase;
+use Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -16,6 +19,7 @@ use Testo\Expect;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
+use Yiisoft\Db\Driver\Pdo\PdoConnectionInterface;
 use Yiisoft\Db\Exception\IntegrityException;
 
 #[Test]
@@ -148,6 +152,41 @@ final class AttachmentsTest
         Assert::same($this->attachments->forOwner('order', 'order-1', 'invoice'), []);
     }
 
+    /**
+     * Review pass 2 N-C5: the visibility check read the files one `find()` at
+     * a time. One scoped `findMany()` answers for the whole set.
+     */
+    public function syncChecksTheWholeSetInOneQuery(): void
+    {
+        $files = [];
+        foreach (['file-1', 'file-2', 'file-3', 'file-4'] as $i => $id) {
+            $files[] = $file = SqliteDatabase::file($id, "sha/da/39/{$i}");
+            $this->database->files->save($file);
+        }
+        $log = new QueryLog();
+        $this->database->db->setLogger($log);
+
+        Assert::same($this->attachments->sync($files, 'order', 'order-1', 'invoice'), ['added' => 4, 'removed' => 0]);
+        Assert::same($log->selectsFrom('filestorage_file'), 1);
+    }
+
+    /** The first invisible file in the caller's order is the one named, as before. */
+    public function syncNamesTheFirstInvisibleFile(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+
+        Expect::exception(InvalidArgumentException::class)
+            ->withMessageContaining('File "ghost-a" is not visible in the current scope');
+
+        $this->attachments->sync(
+            [$file, SqliteDatabase::file('ghost-a', 'sha/da/39/a'), SqliteDatabase::file('ghost-b', 'sha/da/39/b')],
+            'order',
+            'order-1',
+            'invoice',
+        );
+    }
+
     /** Nothing is written when any file is invisible — the whole set or none. */
     public function syncRefusesAFileOutsideTheScopeBeforeWriting(): void
     {
@@ -274,6 +313,91 @@ final class AttachmentsTest
 
             $scope->switchTo('tenant-a');
             Assert::same(count($attachments->forOwner('order', 'order-1')), 1);
+        } finally {
+            $database->close();
+        }
+    }
+
+    /**
+     * The review probe (`nullscope.php`) for this package: a bound provider
+     * returning null became scope `''`, and with the repository dropping its
+     * predicate a caller could link another tenant's file. Every method now
+     * refuses before touching a row.
+     */
+    public function aBoundProviderReturningNullIsRefusedByEveryMethod(): void
+    {
+        $scope = new FixedScope('tenant-a');
+        $database = new SqliteDatabase($scope);
+
+        try {
+            $attachments = new Attachments(db: $database->db, files: $database->files, scopes: $scope);
+            $file = SqliteDatabase::file('file-1');
+            $database->files->save($file);
+            $attachments->attach($file, 'order', 'order-1');
+
+            $scope->switchTo(null);
+            $calls = [
+                'attach' => static fn(): mixed => $attachments->attach($file, 'order', 'order-2'),
+                'detach' => static fn(): mixed => $attachments->detach($file, 'order', 'order-1'),
+                'sync' => static fn(): mixed => $attachments->sync([], 'order', 'order-1'),
+                'forOwner' => static fn(): mixed => $attachments->forOwner('order', 'order-1'),
+                'detachOwner' => static fn(): mixed => $attachments->detachOwner('order', 'order-1'),
+            ];
+            foreach ($calls as $name => $call) {
+                $refused = false;
+
+                try {
+                    $call();
+                } catch (MissingScopeException) {
+                    $refused = true;
+                }
+
+                Assert::true($refused, "{$name} must refuse a null scope");
+            }
+
+            Assert::same(
+                (new \Yiisoft\Db\Query\Query($database->db))->from('filestorage_attachment')->count(),
+                1,
+                'nothing may have been written or deleted',
+            );
+        } finally {
+            $database->close();
+        }
+    }
+
+    /**
+     * `true` means a row was written, not that no error came back: a trigger
+     * or rule that swallows the insert reports zero rows.
+     */
+    public function attachReportsFalseWhenTheDatabaseDropsTheInsert(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+        $db = $this->database->db;
+        Assert::instanceOf($db, PdoConnectionInterface::class);
+        // straight to PDO: the SQLite command splits statements on `;`
+        $db->getActivePdo()->exec(
+            'CREATE TRIGGER drop_links BEFORE INSERT ON filestorage_attachment BEGIN SELECT RAISE(IGNORE); END',
+        );
+
+        Assert::false($this->attachments->attach($file, 'order', 'order-1'));
+        Assert::same($this->attachments->forOwner('order', 'order-1'), []);
+    }
+
+    public function theNullScopeRefusalNamesTheProviderAndTheFix(): void
+    {
+        $scope = new FixedScope();
+        $database = new SqliteDatabase($scope);
+
+        try {
+            $attachments = new Attachments(db: $database->db, files: $database->files, scopes: $scope);
+
+            Expect::exception(MissingScopeException::class)->withMessage(
+                FileScopeProviderInterface::class
+                . ' is bound but returned no scope, so attachments will not read or write links without a tenant. '
+                . 'Establish the tenant first',
+            );
+            $attachments->detachOwner('order', 'order-1');
         } finally {
             $database->close();
         }

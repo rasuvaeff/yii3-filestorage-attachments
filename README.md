@@ -10,8 +10,8 @@ polymorphic attachment case without requiring Active Record.
 composer require rasuvaeff/yii3-filestorage-attachments
 ```
 
-The package requires `rasuvaeff/yii3-filestorage` `^0.9` and
-`rasuvaeff/yii3-filestorage-db` `^0.3`. Run the `-db` migrations first, then
+The package requires `rasuvaeff/yii3-filestorage` `^0.10` and
+`rasuvaeff/yii3-filestorage-db` `^0.4`. Run the `-db` migrations first, then
 register this package's migration namespace:
 
 ```php
@@ -91,13 +91,29 @@ to owner tables.
 > connections injected into it — do this in your application's connection
 > setup. PostgreSQL enforces the cascade by default.
 
-> **MySQL/MariaDB:** they ignore the column-level `REFERENCES` of the table
+> **MySQL:** it ignores the column-level `REFERENCES` of the table
 > migration, so the constraint comes from the follow-up migration
 > `M261127000000AddFilestorageAttachmentFileForeignKey`. Before adding it, that
 > migration **deletes links whose file no longer exists** — on an installation
 > that ran the table migration earlier, every file removed since left its links
-> behind. The migration output prints how many rows it deleted; back up the
-> table first if you need them. On SQLite and PostgreSQL it does nothing.
+> behind. The migration output prints how many rows it deleted (`Deleted N
+> rows`); back up the table first if you need them. It cannot be atomic: MySQL
+> commits the `DELETE` before the `ALTER TABLE`, so if adding the constraint
+> fails, the deleted links stay deleted. On SQLite, PostgreSQL and MariaDB
+> 10.5+ — which creates the foreign key from the column clause — it finds the
+> constraint and does nothing.
+
+> **MySQL/MariaDB compare case-insensitively by default.** Owners `aB` and `Ab`
+> were one owner there: `forOwner()` listed, and `detachOwner()` removed, the
+> other's links. `M261128000000MakeFilestorageAttachmentKeysCaseSensitive`
+> (0.6.0) switches `scope_id`, `owner_type`, `owner_id` and `role` to a binary
+> NO PAD collation — `utf8mb4_0900_bin` on MySQL 8.0.17+, `utf8mb4_nopad_bin`
+> on MariaDB — so case, accents and trailing spaces count: owners `42` and
+> `42 ` are two owners (`utf8mb4_bin` is PAD SPACE and would make them one).
+> MySQL older than 8.0.17 has no such collation and the migration throws there.
+> Run `migrate:up` after upgrading; it rebuilds the table and blocks writes to
+> it meanwhile (see `UPGRADE.md`). It does nothing on SQLite and PostgreSQL,
+> which already compare exactly.
 
 ## Table names and scope
 
@@ -107,7 +123,12 @@ service resolve the same typed `AttachmentTableName`.
 
 With no scope provider, links use an internal empty scope key. With a bound
 `FileScopeProviderInterface`, every operation is restricted to its current
-scope and a file must be visible in that scope before it can be attached.
+scope and a file must be visible in that scope before it can be attached. A
+bound provider that returns `null` is a tenant that did not resolve: every
+method throws `yii3-filestorage-db`'s `MissingScopeException` rather than fall
+back to the empty key (before 0.6.0 it did, and the file lookup ran without a
+tenant predicate). `forOwner()` reads the owner's files in one scoped query
+(`DbRepository::findMany()`), not one per link.
 
 ## Verification
 

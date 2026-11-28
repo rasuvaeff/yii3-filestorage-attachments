@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3FilestorageAttachments\Tests;
 
 use Rasuvaeff\Yii3FilestorageAttachments\Migration\M261127000000AddFilestorageAttachmentFileForeignKey;
+use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\ImpersonatingConnection;
+use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\RecordingInformer;
+use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\ReportedForeignKeysSchema;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\SqliteDatabase;
 use Testo\Assert;
 use Testo\Codecov\Covers;
+use Testo\Expect;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
+use Yiisoft\Db\Constraint\ForeignKey;
 use Yiisoft\Db\Exception\NotSupportedException;
 use Yiisoft\Db\Migration\Informer\NullMigrationInformer;
 use Yiisoft\Db\Migration\MigrationBuilder;
@@ -67,8 +72,12 @@ final class M261127000000AddFilestorageAttachmentFileForeignKeyTest
         $this->insertLink('live');
         $this->insertLink('missing');
 
+        $informer = new RecordingInformer();
+
         try {
-            (new M261127000000AddFilestorageAttachmentFileForeignKey())->up($this->builder);
+            (new M261127000000AddFilestorageAttachmentFileForeignKey())->up(
+                new MigrationBuilder(db: $this->database->db, informer: $informer),
+            );
             Assert::fail('SQLite added a foreign key to an existing table');
         } catch (NotSupportedException $e) {
             Assert::string($e->getMessage())->contains('addForeignKey');
@@ -76,6 +85,8 @@ final class M261127000000AddFilestorageAttachmentFileForeignKeyTest
 
         Assert::same($this->links('live'), 1);
         Assert::same($this->links('missing'), 0);
+        // the operator sees how many links went: `migrate:up` prints it
+        Assert::string(implode(' | ', $informer->ended))->contains('Deleted 1 row');
     }
 
     public function downIgnoresATableWithoutTheConstraint(): void
@@ -87,6 +98,44 @@ final class M261127000000AddFilestorageAttachmentFileForeignKeyTest
 
         Assert::same($this->links(), 1);
         Assert::same($this->foreignKeys(), []);
+    }
+
+    /**
+     * SQLite names its keys `'0'`, `'1'`, …, so a key named as this migration
+     * names it on MySQL is reported by a schema double; SQLite then refuses
+     * the drop, which shows the drop was asked for.
+     */
+    public function downDropsTheConstraintThisMigrationAdded(): void
+    {
+        $builder = $this->reportingForeignKey('fk_filestorage_attachment_file');
+
+        Expect::exception(NotSupportedException::class)->withMessageContaining('dropForeignKey');
+        (new M261127000000AddFilestorageAttachmentFileForeignKey())->down($builder);
+    }
+
+    public function downLeavesAKeyItDidNotAddAlone(): void
+    {
+        // MariaDB names the inline key itself
+        $builder = $this->reportingForeignKey('filestorage_attachment_ibfk_1');
+
+        (new M261127000000AddFilestorageAttachmentFileForeignKey())->down($builder);
+
+        Assert::same($this->foreignKeys(), [['file_id', 'filestorage_file', 'CASCADE']]);
+    }
+
+    private function reportingForeignKey(string $name): MigrationBuilder
+    {
+        return new MigrationBuilder(
+            db: new ImpersonatingConnection(
+                inner: $this->database->db,
+                driverName: 'mysql',
+                schema: new ReportedForeignKeysSchema(
+                    inner: $this->database->db->getSchema(),
+                    foreignKeys: [new ForeignKey(name: $name, columnNames: ['file_id'])],
+                ),
+            ),
+            informer: new NullMigrationInformer(),
+        );
     }
 
     private function recreateWithoutForeignKey(): void

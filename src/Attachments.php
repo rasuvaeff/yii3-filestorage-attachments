@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Rasuvaeff\Yii3Filestorage\File;
 use Rasuvaeff\Yii3Filestorage\Repository\FileScopeProviderInterface;
 use Rasuvaeff\Yii3FilestorageDb\DbRepository;
+use Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException;
 use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Exception\IntegrityException;
 use Yiisoft\Db\Query\Query;
@@ -69,14 +70,11 @@ final readonly class Attachments
         ];
 
         try {
-            $inserted = 0;
             // The savepoint keeps a caller-owned PostgreSQL transaction usable
             // when a concurrent writer wins the unique-key race.
-            $this->db->transaction(function () use ($row, &$inserted): void {
-                $inserted = $this->db->createCommand()->insert($this->table, $row)->execute();
-            });
-
-            return $inserted > 0;
+            return $this->db->transaction(
+                fn(): int => $this->db->createCommand()->insert($this->table, $row)->execute(),
+            ) > 0;
         } catch (IntegrityException $exception) {
             // Do not turn a concurrent file deletion / FK failure into a fake
             // duplicate. Only the exact surviving link is idempotent.
@@ -137,14 +135,18 @@ final readonly class Attachments
     {
         $this->validateOwner($ownerType, $ownerId, $role);
 
-        /** @var list<non-empty-string> $keepIds */
-        $keepIds = [];
-        foreach ($files as $file) {
-            if (!$this->files->find($file->id) instanceof File) {
-                throw new InvalidArgumentException(sprintf('File "%s" is not visible in the current scope', $file->id));
-            }
+        $keepIds = array_map(static fn(File $file): string => $file->id, $files);
 
-            $keepIds[] = $file->id;
+        // one scoped query for the whole set; the first invisible file in the
+        // caller's order is the one named
+        $visible = [];
+        foreach ($this->files->findMany($keepIds) as $found) {
+            $visible[$found->id] = true;
+        }
+        foreach ($keepIds as $id) {
+            if (!isset($visible[$id])) {
+                throw new InvalidArgumentException(sprintf('File "%s" is not visible in the current scope', $id));
+            }
         }
 
         return $this->db->transaction(function () use ($files, $keepIds, $ownerType, $ownerId, $role): array {
@@ -174,17 +176,14 @@ final readonly class Attachments
                 ];
 
                 try {
-                    $inserted = 0;
                     // The savepoint keeps this transaction usable when a
                     // surviving link loses the unique-key race: on PostgreSQL
                     // an uncontained integrity error would abort the whole
                     // sync, and the idempotence check below could not even
                     // run.
-                    $this->db->transaction(function () use ($row, &$inserted): void {
-                        $inserted = $this->db->createCommand()->insert($this->table, $row)->execute();
-                    });
-
-                    $added += $inserted;
+                    $added += $this->db->transaction(
+                        fn(): int => $this->db->createCommand()->insert($this->table, $row)->execute(),
+                    );
                 } catch (IntegrityException $exception) {
                     // A concurrent writer — or this very sync's surviving
                     // link — won the unique-key race; only the exact
@@ -230,7 +229,8 @@ final readonly class Attachments
             ->orderBy(['id' => SORT_ASC])
             ->all();
 
-        $attachments = [];
+        /** @var list<array{non-empty-string, non-empty-string}> $links file id and role, in insertion order */
+        $links = [];
         foreach ($rows as $row) {
             $fileId = $row['file_id'] ?? null;
             $rowRole = $row['role'] ?? null;
@@ -238,7 +238,22 @@ final readonly class Attachments
                 continue;
             }
 
-            $file = $this->files->find($fileId);
+            $links[] = [$fileId, $rowRole];
+        }
+
+        // One scoped statement for the whole page of links rather than one
+        // per link. A file missing from the answer was deleted concurrently
+        // (its link cascades) or is outside the scope; either way it is
+        // skipped, as before. A file linked under two roles is asked for
+        // twice; findMany() drops the repeat, and the map is keyed by id.
+        $files = [];
+        foreach ($this->files->findMany(array_column($links, 0)) as $file) {
+            $files[$file->id] = $file;
+        }
+
+        $attachments = [];
+        foreach ($links as [$fileId, $rowRole]) {
+            $file = $files[$fileId] ?? null;
             if ($file instanceof File) {
                 $attachments[] = new Attachment(
                     file: $file,
@@ -272,14 +287,25 @@ final readonly class Attachments
         ])->execute();
     }
 
+    /**
+     * `''` when no provider is bound — the single-tenant installation. A
+     * bound provider returning null is a tenant that did not resolve, and is
+     * refused rather than read as "no tenant": `''` would then be a pool every
+     * unresolved request shares, exactly as `DbRepository` refuses it.
+     *
+     * @throws MissingScopeException
+     */
     private function scopeKey(): string
     {
-        $scope = $this->scopes?->currentScopeId();
-        if ($scope === null) {
+        if (!$this->scopes instanceof FileScopeProviderInterface) {
             return '';
         }
 
-        return $scope;
+        return $this->scopes->currentScopeId() ?? throw new MissingScopeException(sprintf(
+            '%s is bound but returned no scope, so attachments will not read or write links without a tenant. '
+            . 'Establish the tenant first',
+            FileScopeProviderInterface::class,
+        ));
     }
 
     /** @param array<string, string> $row */

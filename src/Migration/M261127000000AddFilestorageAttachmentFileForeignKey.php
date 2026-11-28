@@ -14,13 +14,13 @@ use Yiisoft\Db\Query\Query;
 /**
  * Adds the file foreign key where the table migration left none: on MySQL.
  *
- * MySQL (and MariaDB) parse a column-level `REFERENCES ... ON DELETE CASCADE`
- * and drop it, so the table migration created no constraint there and
- * removing a file kept its links. When the table has no foreign key on
- * `file_id`, this first deletes links whose file no longer exists (the
- * informer prints the count), then adds the constraint. SQLite and
- * PostgreSQL keep the inline one, so there it does nothing; `down()` drops
- * only the constraint this migration added.
+ * MySQL parses a column-level `REFERENCES ... ON DELETE CASCADE` and drops
+ * it, so the table migration created no constraint there and removing a file
+ * kept its links. When the table has no foreign key on `file_id`, this first
+ * deletes links whose file no longer exists (the informer prints the count),
+ * then adds the constraint. SQLite, PostgreSQL and MariaDB 10.5+ (which
+ * creates a foreign key from the column clause) keep the inline one, so there
+ * it does nothing; `down()` drops only the constraint this migration added.
  *
  * Not transactional: MySQL commits implicitly on `ALTER TABLE`. Re-running
  * after a failure is safe — the delete finds nothing and the constraint is

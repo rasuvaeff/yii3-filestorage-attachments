@@ -12,15 +12,20 @@ Public API:
 - `Attachments::detach(File $file, string $ownerType, string $ownerId, string $role = 'default'): bool`
 - `Attachments::forOwner(string $ownerType, string $ownerId, ?string $role = null): list<Attachment>`
 - `Attachments::detachOwner(string $ownerType, string $ownerId): int`
-- `Attachments::sync(array $files, string $ownerType, string $ownerId, string $role = 'default'): array{added: int, removed: int}` — replace a role's file set in ONE transaction (delete non-kept, insert missing; unique-key catch makes duplicates idempotent). Surviving links keep insertion order; every file must be scope-visible before anything is written
+- `Attachments::sync(array $files, string $ownerType, string $ownerId, string $role = 'default'): array{added: int, removed: int}` — replace a role's file set in ONE transaction (delete non-kept, insert missing; unique-key catch makes duplicates idempotent). Surviving links keep insertion order; every file must be scope-visible before anything is written (checked with one scoped `DbRepository::findMany()`; the first invisible file is named)
 - `Migration\M260814000000CreateFilestorageAttachmentTable`
-- `Migration\M261127000000AddFilestorageAttachmentFileForeignKey` — MySQL/MariaDB only in effect (they ignore the inline `REFERENCES`): deletes links whose file no longer exists, then adds the `ON DELETE CASCADE` foreign key. No-op on SQLite/PostgreSQL
+- `Migration\M261127000000AddFilestorageAttachmentFileForeignKey` — MySQL only in effect (it ignores the inline `REFERENCES`; MariaDB 10.5+ creates the key from it): deletes links whose file no longer exists (output: `Deleted N rows`; not atomic with the `ALTER`), then adds the `ON DELETE CASCADE` foreign key. No-op on SQLite/PostgreSQL
+- `Migration\M261128000000MakeFilestorageAttachmentKeysCaseSensitive` (0.6.0) — MySQL/MariaDB only: `scope_id`, `owner_type`, `owner_id`, `role` in a binary NO PAD collation — `utf8mb4_0900_bin` (MySQL 8.0.17+; older MySQL: `RuntimeException`) / `utf8mb4_nopad_bin` (MariaDB) — so case, accents and trailing spaces count (default collations made `aB`/`Ab` one owner; `utf8mb4_bin` would make `42`/`42 ` one). Rebuilds the table (writes wait), needs `ROW_FORMAT=DYNAMIC`. No-op on SQLite/PostgreSQL
 
 Links are unique by `(scope_id, owner_type, owner_id, role, file_id)` and
-`attach()` is idempotent. `scope_id = ''` means single-tenant mode; a bound
-`FileScopeProviderInterface` supplies the non-empty scope key. The file foreign
+`attach()` is idempotent. `scope_id = ''` means single-tenant mode (no provider
+bound); a bound `FileScopeProviderInterface` supplies the non-empty scope key,
+and a bound provider returning null makes every method throw
+`Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException` — never the
+empty key. `forOwner()` hydrates files with one scoped
+`DbRepository::findMany()` call. The file foreign
 key cascades on file deletion (SQLite requires `PRAGMA foreign_keys = ON`
-per connection; on MySQL/MariaDB the constraint comes from
+per connection; on MySQL the constraint comes from
 `M261127000000AddFilestorageAttachmentFileForeignKey`). Owner deletion is application-owned and calls
 `detachOwner()`.
 
