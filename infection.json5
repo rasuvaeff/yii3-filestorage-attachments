@@ -8,15 +8,21 @@
         "summary": "build/infection-summary.log"
     },
     "testFramework": "testo",
-    // Measured 2026-11-01 with --with-uncovered: 118 mutants, overall MSI 95%. Five
-    // survivors are equivalent and unkillable:
-    // - `$inserted = 0` -> `-1` in attach() and sync(): the transaction callback
-    //   always overwrites it, or throws.
-    // - `$inserted > 0` -> `>= 0` in attach(): a successful single-row insert
-    //   reports 1, never 0.
+    "testFrameworkOptions": "--suite=Unit",
+    // Measured 2026-11-28 with --with-uncovered, zend.assertions=-1 as in CI:
+    // 163 mutants, 159 killed, MSI 97.55%. Four survivors are equivalent:
+    // - `$visible[$found->id] = true` -> `false` in sync(): only isset() reads
+    //   the map, and isset() is true for false as well.
     // - the two LogicalOr mutants in forOwner(): a row with a non-string or empty
-    //   file_id can only reach a repository lookup that returns null, which
-    //   skips it exactly as the guard does (the columns are NOT NULL strings).
+    //   file_id can only reach findMany(), which leaves that id out of its
+    //   answer, so the link is skipped exactly as the guard skips it (the
+    //   columns are NOT NULL strings).
+    // - the `(int)` CastInt in ExactCollation::choose(): `(int) $n < 1` and
+    //   `$n < 1` differ only for INF, NAN or out-of-range floats, which a
+    //   COUNT(*) never returns.
+    // The MySQL branches of both migrations are reached on SQLite through
+    // tests/Support/ImpersonatingConnection (the DDL they emit, not what a
+    // server does with it; the integration suite runs that).
     "minMsi": 94,
     "mutators": {
         "@default": true,
