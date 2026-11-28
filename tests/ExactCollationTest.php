@@ -51,5 +51,6 @@ final class ExactCollationTest
         yield 'count as an int' => ['5.7.44', 0, 'MySQL 5.7.44' . $tail];
         yield 'no answer' => [null, null, 'MySQL ' . $tail];
         yield 'not a number' => ['8.0.16', 'n/a', 'MySQL 8.0.16' . $tail];
+        yield 'version as a float' => [5.7, 0, 'MySQL 5.7' . $tail];
     }
 }

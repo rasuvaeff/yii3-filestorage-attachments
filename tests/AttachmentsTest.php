@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3FilestorageAttachments\Tests;
 
 use InvalidArgumentException;
+use Rasuvaeff\Yii3Filestorage\Repository\FileScopeProviderInterface;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachment;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachments;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\FixedScope;
@@ -18,6 +19,7 @@ use Testo\Expect;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
+use Yiisoft\Db\Driver\Pdo\PdoConnectionInterface;
 use Yiisoft\Db\Exception\IntegrityException;
 
 #[Test]
@@ -358,6 +360,44 @@ final class AttachmentsTest
                 1,
                 'nothing may have been written or deleted',
             );
+        } finally {
+            $database->close();
+        }
+    }
+
+    /**
+     * `true` means a row was written, not that no error came back: a trigger
+     * or rule that swallows the insert reports zero rows.
+     */
+    public function attachReportsFalseWhenTheDatabaseDropsTheInsert(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+        $db = $this->database->db;
+        Assert::instanceOf($db, PdoConnectionInterface::class);
+        // straight to PDO: the SQLite command splits statements on `;`
+        $db->getActivePdo()->exec(
+            'CREATE TRIGGER drop_links BEFORE INSERT ON filestorage_attachment BEGIN SELECT RAISE(IGNORE); END',
+        );
+
+        Assert::false($this->attachments->attach($file, 'order', 'order-1'));
+        Assert::same($this->attachments->forOwner('order', 'order-1'), []);
+    }
+
+    public function theNullScopeRefusalNamesTheProviderAndTheFix(): void
+    {
+        $scope = new FixedScope();
+        $database = new SqliteDatabase($scope);
+
+        try {
+            $attachments = new Attachments(db: $database->db, files: $database->files, scopes: $scope);
+
+            Expect::exception(MissingScopeException::class)->withMessage(
+                FileScopeProviderInterface::class
+                . ' is bound but returned no scope, so attachments will not read or write links without a tenant. '
+                . 'Establish the tenant first',
+            );
+            $attachments->detachOwner('order', 'order-1');
         } finally {
             $database->close();
         }
