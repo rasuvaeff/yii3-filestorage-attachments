@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachment;
 use Rasuvaeff\Yii3FilestorageAttachments\Attachments;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\FixedScope;
+use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\QueryLog;
 use Rasuvaeff\Yii3FilestorageAttachments\Tests\Support\SqliteDatabase;
 use Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException;
 use Testo\Assert;
@@ -147,6 +148,41 @@ final class AttachmentsTest
 
         Assert::same($result, ['added' => 0, 'removed' => 1]);
         Assert::same($this->attachments->forOwner('order', 'order-1', 'invoice'), []);
+    }
+
+    /**
+     * Review pass 2 N-C5: the visibility check read the files one `find()` at
+     * a time. One scoped `findMany()` answers for the whole set.
+     */
+    public function syncChecksTheWholeSetInOneQuery(): void
+    {
+        $files = [];
+        foreach (['file-1', 'file-2', 'file-3', 'file-4'] as $i => $id) {
+            $files[] = $file = SqliteDatabase::file($id, "sha/da/39/{$i}");
+            $this->database->files->save($file);
+        }
+        $log = new QueryLog();
+        $this->database->db->setLogger($log);
+
+        Assert::same($this->attachments->sync($files, 'order', 'order-1', 'invoice'), ['added' => 4, 'removed' => 0]);
+        Assert::same($log->selectsFrom('filestorage_file'), 1);
+    }
+
+    /** The first invisible file in the caller's order is the one named, as before. */
+    public function syncNamesTheFirstInvisibleFile(): void
+    {
+        $file = SqliteDatabase::file('file-1');
+        $this->database->files->save($file);
+
+        Expect::exception(InvalidArgumentException::class)
+            ->withMessageContaining('File "ghost-a" is not visible in the current scope');
+
+        $this->attachments->sync(
+            [$file, SqliteDatabase::file('ghost-a', 'sha/da/39/a'), SqliteDatabase::file('ghost-b', 'sha/da/39/b')],
+            'order',
+            'order-1',
+            'invoice',
+        );
     }
 
     /** Nothing is written when any file is invisible — the whole set or none. */

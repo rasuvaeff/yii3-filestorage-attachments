@@ -42,18 +42,20 @@ use Yiisoft\Test\Support\Clock\StaticClock;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 
 /**
- * The attachment migrations and the file cascade on MySQL and PostgreSQL.
+ * The attachment migrations and the file cascade on MySQL, MariaDB and
+ * PostgreSQL.
  *
  * Every other test runs on SQLite. MySQL parses the column-level
  * `REFERENCES ... ON DELETE CASCADE` of the table migration and ignores it,
  * so removing a file there left its links behind while every SQLite test
- * stayed green. This applies all migrations, seeds a link that outlived its
+ * stayed green. MariaDB 10.5+ creates the constraint from the same clause,
+ * like PostgreSQL — the follow-up migration then finds it and does nothing. This applies all migrations, seeds a link that outlived its
  * file the way such an installation has them, and checks that the follow-up
  * migration removes it and that a file removed through core takes its links
  * along.
  *
  * Runs only when `FILESTORAGE_TEST_DB` names a live server; the ungated
- * `database-integration` matrix job in CI supplies both.
+ * `database-integration` matrix job in CI supplies all three.
  */
 #[Test]
 #[CoversNothing]
@@ -71,7 +73,7 @@ final class CrossDatabaseMigrationTest
     {
         $database = getenv('FILESTORAGE_TEST_DB');
 
-        if ($database !== 'mysql' && $database !== 'pgsql') {
+        if (!in_array($database, ['mysql', 'mariadb', 'pgsql'], strict: true)) {
             Assert::true($database === false || $database === '');
 
             return;
@@ -125,6 +127,7 @@ final class CrossDatabaseMigrationTest
 
             $keys->up($builder);
             $this->ownersDifferingOnlyInCaseAreApart($attachments, $storage);
+            $this->ownersDifferingOnlyInTrailingSpaceAreApart($attachments, $storage);
             $keys->down($builder);
 
             $foreignKey->down($builder);
@@ -169,9 +172,36 @@ final class CrossDatabaseMigrationTest
     }
 
     /**
+     * `utf8mb4_bin` is PAD SPACE: owner `42 ` was owner `42` — the other's
+     * links listed and detached, the first link of the second refused as
+     * "already linked". MySQL 8's default collation is NO PAD, so on MySQL the
+     * case fix had introduced this match.
+     */
+    private function ownersDifferingOnlyInTrailingSpaceAreApart(Attachments $attachments, Storage $storage): void
+    {
+        $first = $this->add($storage);
+        $second = $this->add($storage);
+
+        Assert::true($attachments->attach($first, 'post', '42'));
+        Assert::true($attachments->attach($second, 'post', '42 '), 'a trailing space is another owner');
+        Assert::true($attachments->attach($first, 'post ', '42'), 'a trailing space is another owner type');
+        Assert::true($attachments->attach($first, 'post', '42', 'default '), 'a trailing space is another role');
+
+        Assert::same(
+            array_map(static fn(Attachment $a): string => $a->file->id, $attachments->forOwner('post', '42 ')),
+            [$second->id],
+        );
+        Assert::same($attachments->detachOwner('post', '42 '), 1);
+        Assert::same(\count($attachments->forOwner('post', '42')), 2);
+        Assert::same($attachments->detachOwner('post ', '42'), 1);
+        Assert::same($attachments->detachOwner('post', '42'), 2);
+    }
+
+    /**
      * On MySQL the table migration left no constraint, so removing a file
      * keeps its link: the state an existing installation is in. PostgreSQL
-     * has the constraint from the start and refuses such a row outright.
+     * and MariaDB 10.5+ have the constraint from the start and refuse such a
+     * row outright.
      */
     private function seedOrphanLink(
         ConnectionInterface $db,
@@ -202,7 +232,7 @@ final class CrossDatabaseMigrationTest
                 'role' => 'default',
                 'file_id' => 'missing',
             ])->execute();
-            Assert::fail('PostgreSQL accepted a link to a missing file');
+            Assert::fail("{$database} accepted a link to a missing file");
         } catch (IntegrityException) {
         }
 
@@ -264,10 +294,12 @@ final class CrossDatabaseMigrationTest
     private function connection(string $database): ConnectionInterface
     {
         $cache = new SchemaCache(psrCache: new MemorySimpleCache());
-        $mysqlPort = getenv('FILESTORAGE_TEST_MYSQL_PORT') ?: '3306';
+        $mysqlPort = $database === 'mariadb'
+            ? (getenv('FILESTORAGE_TEST_MARIADB_PORT') ?: '3307')
+            : (getenv('FILESTORAGE_TEST_MYSQL_PORT') ?: '3306');
         $pgsqlPort = getenv('FILESTORAGE_TEST_PGSQL_PORT') ?: '5432';
 
-        return $database === 'mysql'
+        return $database !== 'pgsql'
             ? new MysqlConnection(
                 driver: new MysqlDriver(
                     dsn: sprintf('mysql:host=127.0.0.1;port=%s;dbname=filestorage;charset=utf8mb4', $mysqlPort),

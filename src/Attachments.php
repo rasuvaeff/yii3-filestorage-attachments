@@ -138,14 +138,18 @@ final readonly class Attachments
     {
         $this->validateOwner($ownerType, $ownerId, $role);
 
-        /** @var list<non-empty-string> $keepIds */
-        $keepIds = [];
-        foreach ($files as $file) {
-            if (!$this->files->find($file->id) instanceof File) {
-                throw new InvalidArgumentException(sprintf('File "%s" is not visible in the current scope', $file->id));
-            }
+        $keepIds = array_map(static fn(File $file): string => $file->id, $files);
 
-            $keepIds[] = $file->id;
+        // one scoped query for the whole set; the first invisible file in the
+        // caller's order is the one named
+        $visible = [];
+        foreach ($this->files->findMany($keepIds) as $found) {
+            $visible[$found->id] = true;
+        }
+        foreach ($keepIds as $id) {
+            if (!isset($visible[$id])) {
+                throw new InvalidArgumentException(sprintf('File "%s" is not visible in the current scope', $id));
+            }
         }
 
         return $this->db->transaction(function () use ($files, $keepIds, $ownerType, $ownerId, $role): array {
