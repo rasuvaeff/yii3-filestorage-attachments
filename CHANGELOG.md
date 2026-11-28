@@ -2,7 +2,9 @@
 
 All notable changes to this package are documented here.
 
-## Unreleased
+## 0.6.0 — 2026-11-28
+
+Pre-1.0 review fixes (#20).
 
 - **Changed:** requires `rasuvaeff/yii3-filestorage` `^0.10` and `rasuvaeff/yii3-filestorage-db` `^0.4`. No API change here; built and tested against both (Unit, Integration on SQLite, MySQL 8.4, MariaDB 11.8, PostgreSQL 17).
 - **Changed (security):** a bound `FileScopeProviderInterface` returning `null` makes every `Attachments` method throw `Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException`. Before, it fell back to the single-tenant scope key `''`, and `attach()`'s file lookup ran without a tenant predicate, so a file of another tenant could be linked.
