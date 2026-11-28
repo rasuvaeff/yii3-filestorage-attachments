@@ -70,14 +70,11 @@ final readonly class Attachments
         ];
 
         try {
-            $inserted = 0;
             // The savepoint keeps a caller-owned PostgreSQL transaction usable
             // when a concurrent writer wins the unique-key race.
-            $this->db->transaction(function () use ($row, &$inserted): void {
-                $inserted = $this->db->createCommand()->insert($this->table, $row)->execute();
-            });
-
-            return $inserted > 0;
+            return $this->db->transaction(
+                fn(): int => $this->db->createCommand()->insert($this->table, $row)->execute(),
+            ) > 0;
         } catch (IntegrityException $exception) {
             // Do not turn a concurrent file deletion / FK failure into a fake
             // duplicate. Only the exact surviving link is idempotent.
@@ -179,17 +176,14 @@ final readonly class Attachments
                 ];
 
                 try {
-                    $inserted = 0;
                     // The savepoint keeps this transaction usable when a
                     // surviving link loses the unique-key race: on PostgreSQL
                     // an uncontained integrity error would abort the whole
                     // sync, and the idempotence check below could not even
                     // run.
-                    $this->db->transaction(function () use ($row, &$inserted): void {
-                        $inserted = $this->db->createCommand()->insert($this->table, $row)->execute();
-                    });
-
-                    $added += $inserted;
+                    $added += $this->db->transaction(
+                        fn(): int => $this->db->createCommand()->insert($this->table, $row)->execute(),
+                    );
                 } catch (IntegrityException $exception) {
                     // A concurrent writer — or this very sync's surviving
                     // link — won the unique-key race; only the exact
@@ -250,9 +244,10 @@ final readonly class Attachments
         // One scoped statement for the whole page of links rather than one
         // per link. A file missing from the answer was deleted concurrently
         // (its link cascades) or is outside the scope; either way it is
-        // skipped, as before.
+        // skipped, as before. A file linked under two roles is asked for
+        // twice; findMany() drops the repeat, and the map is keyed by id.
         $files = [];
-        foreach ($this->files->findMany(array_values(array_unique(array_column($links, 0)))) as $file) {
+        foreach ($this->files->findMany(array_column($links, 0)) as $file) {
             $files[$file->id] = $file;
         }
 
