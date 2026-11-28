@@ -25,7 +25,7 @@
         "rasuvaeff/yii3-filestorage": "^0.10",
         "rasuvaeff/yii3-filestorage-db": "^0.4",
         "yiisoft/db": "^2.0",
-        "yiisoft/db-migration": "^2.1"
+        "yiisoft/db-migration": "^2.1.1"
     },
     "require-dev": {
         "ergebnis/composer-normalize": "^2.51",

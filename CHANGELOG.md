@@ -6,6 +6,8 @@ All notable changes to this package are documented here.
 
 Pre-1.0 review fixes (#20).
 
+- **Changed:** requires `yiisoft/db-migration` `^2.1.1`: 2.1.0 does not report how many rows `MigrationBuilder::delete()` removed, and the FK migration's documented "Deleted N rows" line comes from it.
+
 - **Changed:** requires `rasuvaeff/yii3-filestorage` `^0.10` and `rasuvaeff/yii3-filestorage-db` `^0.4`. No API change here; built and tested against both (Unit, Integration on SQLite, MySQL 8.4, MariaDB 11.8, PostgreSQL 17).
 - **Changed (security):** a bound `FileScopeProviderInterface` returning `null` makes every `Attachments` method throw `Rasuvaeff\Yii3FilestorageDb\Exception\MissingScopeException`. Before, it fell back to the single-tenant scope key `''`, and `attach()`'s file lookup ran without a tenant predicate, so a file of another tenant could be linked.
 - **Fixed:** on MySQL/MariaDB the default collation compared `scope_id`, `owner_type`, `owner_id` and `role` case- and accent-insensitively: owner `Ab` saw and `detachOwner()` removed the links of owner `aB`, and the unique key refused `Ab`'s first link, which `attach()` reported as "already linked". New migration `M261128000000MakeFilestorageAttachmentKeysCaseSensitive` switches the four columns to a binary NO PAD collation — `utf8mb4_0900_bin` on MySQL 8.0.17+, `utf8mb4_nopad_bin` on MariaDB, a `RuntimeException` on older MySQL — so case, accents and trailing spaces count (`utf8mb4_bin` is PAD SPACE: owner `42 ` would have been owner `42`, a match MySQL 8's NO PAD default never made). No-op on SQLite/PostgreSQL. Run `migrate:up` after upgrading; on MySQL/MariaDB it rebuilds the table and blocks writes meanwhile — see `UPGRADE.md`.
