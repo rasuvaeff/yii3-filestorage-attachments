@@ -70,18 +70,21 @@ public contract and must stay runnable.
   `''`.
 - MySQL/MariaDB compare the link key case-insensitively unless
   `M261128000000MakeFilestorageAttachmentKeysCaseSensitive` ran; any new key
-  column needs `utf8mb4_bin` there too (`file_id` excepted — the FK needs the
-  file table's collation).
+  column needs the same binary NO PAD collation there too
+  (`utf8mb4_0900_bin` / MariaDB `utf8mb4_nopad_bin`, never `utf8mb4_bin`, which
+  ignores trailing spaces; `file_id` excepted — the FK needs the file table's
+  collation).
 - The file FK is inline because SQLite cannot add a foreign key with a later
-  `ALTER TABLE`. MySQL/MariaDB parse that inline `REFERENCES` and **ignore**
-  it, so `M261127000000AddFilestorageAttachmentFileForeignKey` adds the
+  `ALTER TABLE`. MySQL parses that inline `REFERENCES` and **ignores** it
+  (MariaDB 10.5+ creates the key, like PostgreSQL), so `M261127000000AddFilestorageAttachmentFileForeignKey` adds the
   constraint wherever the table has none (deleting orphaned links first). Never
   edit an applied migration; fix schema with a new one. Run the
   `yii3-filestorage-db` migration first.
 - **Everything here must run on MySQL and PostgreSQL, not only SQLite.**
   `tests/Integration/CrossDatabaseMigrationTest` applies all migrations and
-  removes a file through core on both servers; CI runs it in the ungated
-  `database-integration` matrix job (`mysql integration`, `pgsql integration`).
+  removes a file through core on all three servers; CI runs it in the ungated
+  `database-integration` matrix job (`mysql integration`,
+  `mariadb integration`, `pgsql integration`).
   Mutation runs on SQLite only, so the FK-adding path is unit-tested on a table
   recreated without the constraint.
 - The package binds only its own `Attachments` service and table name. It never
